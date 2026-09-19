@@ -12,8 +12,6 @@ from solders.hash import Hash
 from solders.system_program import transfer, TransferParams
 from solders.instruction import Instruction, AccountMeta
 from solders.compute_budget import set_compute_unit_price, set_compute_unit_limit
-from spl.token.instructions import get_associated_token_address, create_associated_token_account
-from spl.token.constants import TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
 from config.settings import config
 from models.database import db, Transaction, Position
 from cryptography.fernet import Fernet
@@ -26,6 +24,39 @@ ENCRYPTION_KEY = config.ENCRYPTION_KEY.encode() if isinstance(config.ENCRYPTION_
 cipher = Fernet(base64.urlsafe_b64encode(ENCRYPTION_KEY[:32].ljust(32, b'=')))
 
 mnemo = Mnemonic("english")
+
+# SPL Token constants
+TOKEN_PROGRAM_ID = Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+ASSOCIATED_TOKEN_PROGRAM_ID = Pubkey.from_string("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
+
+
+def get_associated_token_address(owner: Pubkey, mint: Pubkey) -> Pubkey:
+    """Derive associated token address (ATA) for owner/mint"""
+    seeds = [bytes(owner), bytes(TOKEN_PROGRAM_ID), bytes(mint)]
+    ata, _ = Pubkey.find_program_address(seeds, ASSOCIATED_TOKEN_PROGRAM_ID)
+    return ata
+
+
+def create_associated_token_account_instruction(
+    payer: Pubkey, owner: Pubkey, mint: Pubkey
+) -> Instruction:
+    """Create instruction to create associated token account"""
+    ata = get_associated_token_address(owner, mint)
+    keys = [
+        AccountMeta(pubkey=payer, is_signer=True, is_writable=True),
+        AccountMeta(pubkey=ata, is_signer=False, is_writable=True),
+        AccountMeta(pubkey=owner, is_signer=False, is_writable=False),
+        AccountMeta(pubkey=mint, is_signer=False, is_writable=False),
+        AccountMeta(pubkey=TOKEN_PROGRAM_ID, is_signer=False, is_writable=False),
+        AccountMeta(pubkey=Pubkey.from_string("11111111111111111111111111111111"), is_signer=False, is_writable=False),  # System Program
+    ]
+    # ATA create instruction: discriminator + no data
+    data = bytes([1])  # Create instruction discriminator
+    return Instruction(
+        program_id=ASSOCIATED_TOKEN_PROGRAM_ID,
+        accounts=keys,
+        data=data
+    )
 
 
 class SolanaService:
